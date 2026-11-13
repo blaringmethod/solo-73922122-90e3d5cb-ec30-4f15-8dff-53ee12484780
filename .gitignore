@@ -1,0 +1,15 @@
+# Local Python test environment (delivery runs inside Docker)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local SQLite artifacts if the app is run outside a container
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Editor / OS noise
+.DS_Store
+*.swp

@@ -1,0 +1,65 @@
+name: ferment-archiver
+
+services:
+  broker:
+    image: eclipse-mosquitto:2.0.20
+    container_name: ferment-broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - broker-data:/mosquitto/data
+    healthcheck:
+      # Anonymous local connection; uses a separate topic so health probes
+      # never mix with the lab measurement stream.
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t '$SYS/health' -m ok -q 1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./app
+    container_name: ferment-api
+    restart: unless-stopped
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      MQTT_HOST: broker
+      MQTT_PORT: "1883"
+      MQTT_CLIENT_ID: ferment-archiver
+      MQTT_TOPIC: lab/fermenter/measurement
+      MQTT_KEEPALIVE: "30"
+      DB_PATH: /data/archiver.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - api-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Demo helper. It does not publish on startup; run scenarios explicitly:
+  #   docker compose run --rm publisher python publisher.py --guided
+  publisher:
+    build:
+      context: ./publisher
+    container_name: ferment-publisher
+    depends_on:
+      broker:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      MQTT_HOST: broker
+      MQTT_PORT: "1883"
+      MQTT_TOPIC: lab/fermenter/measurement
+    profiles: ["demo"]
+
+volumes:
+  broker-data:
+  api-data:
