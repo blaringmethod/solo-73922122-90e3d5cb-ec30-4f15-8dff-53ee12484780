@@ -1,6 +1,7 @@
 """Pydantic schemas: payload validation (in) and API responses (out)."""
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -93,3 +94,91 @@ class Paginated(BaseModel):
     offset: int
     items: list[Any]
     next_offset: Optional[int]
+
+
+# ---------------------------------------------------------------- packaging
+
+class PackageStatus(str, Enum):
+    """Lifecycle of one offline-delivery package job.
+
+    PENDING   - accepted, worker has not opened its snapshot yet
+    READING   - snapshot transaction open; rows are being streamed to the ZIP
+    VERIFYING - ZIP closed; CRC/structure check and checksum in progress
+    PUBLISHING- archive verified; about to be atomically moved to published/
+    COMPLETED - published and downloadable; content is now immutable
+    CANCELLED - cancel requested and fully settled (IO stopped, cleaned up)
+    FAILED    - error before publication; nothing is downloadable
+    """
+
+    PENDING = "pending"
+    READING = "reading"
+    VERIFYING = "verifying"
+    PUBLISHING = "publishing"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+# Statuses in which a job occupies the single in-process packaging slot.
+ACTIVE_STATUSES = frozenset(
+    {
+        PackageStatus.PENDING,
+        PackageStatus.READING,
+        PackageStatus.VERIFYING,
+        PackageStatus.PUBLISHING,
+    }
+)
+# Statuses in which a finished ZIP may be downloaded.
+DOWNLOADABLE_STATUSES = frozenset({PackageStatus.COMPLETED})
+
+
+class PackageCreate(BaseModel):
+    instrument_id: str = Field(min_length=1, max_length=128)
+    batch_no: str = Field(min_length=1, max_length=128)
+
+
+class PackageOut(BaseModel):
+    job_id: str
+    instrument_id: str
+    batch_no: str
+    status: PackageStatus
+    cancel_requested: bool
+    created_at: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    snapshot_at: Optional[str] = None
+    rows_written: int
+    sample_rows: int
+    conflict_rows: int
+    bytes_written: int
+    error: Optional[str] = None
+    file_name: Optional[str] = None
+    sha256: Optional[str] = None
+    download_url: Optional[str] = None
+
+
+class PackageListOut(BaseModel):
+    count: int
+    items: list[PackageOut]
+
+
+class CancelOut(BaseModel):
+    job_id: str
+    status: PackageStatus
+    cancel_requested: bool
+    message: str
+
+
+class PackageDemoIn(BaseModel):
+    # Seconds the packaging worker sleeps after every streamed DB batch while
+    # in READING. Bounded so a demo can never hang a job forever.
+    read_batch_seconds: float = Field(default=0.0, ge=0.0, le=600.0)
+    # Seconds the worker holds a fully written, verified ZIP *before* the
+    # atomic publish move. This is the "written but not yet published" window
+    # in which a cancel must still be able to suppress the archive.
+    pre_publish_seconds: float = Field(default=0.0, ge=0.0, le=600.0)
+
+
+class PackageDemoOut(BaseModel):
+    read_batch_seconds: float
+    pre_publish_seconds: float

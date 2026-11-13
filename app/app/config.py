@@ -25,5 +25,14 @@ class Settings:
     # letting the in-memory queue grow without limit.
     max_inflight: int = int(os.getenv("MQTT_MAX_INFLIGHT", "256"))
 
+    # -- offline package delivery ------------------------------------------
+    # Root directory for ZIP packaging: staging work, published archives and
+    # per-job metadata all live underneath it. It sits on the same persistent
+    # volume as the SQLite database so completed packages survive restarts.
+    packages_dir: str = os.getenv("PACKAGES_DIR", "/data/packages")
+    # Number of rows fetched from SQLite and streamed into one CSV chunk. The
+    # whole batch is never loaded: peak memory is bounded by this value.
+    package_batch_size: int = int(os.getenv("PACKAGE_BATCH_SIZE", "500"))
+
 
 settings = Settings()

@@ -185,6 +185,16 @@ class Database:
         conn.execute("PRAGMA query_only=ON;")
         return conn
 
+    def read_connection(self) -> sqlite3.Connection:
+        """Open a strictly read-only connection (WAL safe).
+
+        Callers own the connection and must close it. The packaging worker
+        also uses this factory for its own long-lived snapshot connection so
+        it never touches the writer connection and can never take a write
+        lock (``PRAGMA query_only`` rejects any statement that would).
+        """
+        return self._read_connection()
+
     @staticmethod
     def _filters(
         instrument_id: Optional[str], batch_no: Optional[str]

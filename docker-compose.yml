@@ -33,6 +33,11 @@ services:
       MQTT_TOPIC: lab/fermenter/measurement
       MQTT_KEEPALIVE: "30"
       DB_PATH: /data/archiver.db
+      # Packaging work area: staged ZIPs, published archives and per-job
+      # metadata all live under the same persistent /data volume, so
+      # completed delivery packages survive container restarts.
+      PACKAGES_DIR: /data/packages
+      PACKAGE_BATCH_SIZE: "500"
     ports:
       - "8000:8000"
     volumes:
